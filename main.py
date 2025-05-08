@@ -22,13 +22,15 @@ is_paused = False
 YTDL_OPTIONS = {
     'format': 'bestaudio/best',
     'extractaudio': True,
+    'audioformat': 'mp3',
     'noplaylist': True,
     'quiet': True,
 }
 
 FFMPEG_OPTIONS = {
-    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-    'options': '-vn',
+    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -nostdin',
+    'options': '-vn -b:a 128k -ac 2',
+    'executable': '/usr/bin/ffmpeg'
 }
 
 @bot.event
@@ -39,17 +41,30 @@ async def on_ready():
 async def play_next(ctx):
     global queue, current_song, is_playing, is_paused
     
-    if len(queue) > 0:
+    if len(queue) > 0 and ctx.voice_client:
         is_playing = True
         is_paused = False
         current_song = queue.popleft()
         
-        ctx.voice_client.play(
-            discord.FFmpegPCMAudio(current_song['url'], **FFMPEG_OPTIONS),
-            after=lambda e: asyncio.run_coroutine_threadsafe(play_next(ctx), bot.loop)
-        )
-        
-        await ctx.send(f"🎶 Reproduciendo: **{current_song['title']}**")
+        try:
+            source = discord.FFmpegPCMAudio(
+                current_song['url'],
+                **FFMPEG_OPTIONS
+            )
+            
+            def after_playing(error):
+                if error:
+                    print(f'Error de reproducción: {error}')
+                asyncio.run_coroutine_threadsafe(play_next(ctx), bot.loop)
+            
+            ctx.voice_client.play(source, after=after_playing)
+            await ctx.send(f"🎶 Reproduciendo: **{current_song['title']}**")
+            
+        except Exception as e:
+            print(f"Error al reproducir: {e}")
+            await ctx.send("❌ Error al reproducir la canción")
+            is_playing = False
+            await play_next(ctx)
     else:
         is_playing = False
         current_song = None
@@ -96,6 +111,9 @@ async def play(ctx, *, url: str):
         elif ctx.voice_client.channel != voice_channel:
             await ctx.voice_client.move_to(voice_channel)
 
+        if ctx.voice_client.is_playing():
+            ctx.voice_client.stop()
+
         if not url.startswith('http'):
             url = f"ytsearch:{url}"
 
@@ -118,6 +136,7 @@ async def play(ctx, *, url: str):
                 
     except Exception as e:
         await ctx.send(f"❌ Error: {str(e)}")
+        print(f"Error en play: {repr(e)}")
 
 @bot.command(name='queue', aliases=['q'])
 async def show_queue(ctx):
@@ -205,14 +224,8 @@ async def now_playing(ctx):
     
     await ctx.send(f"🎶 Reproduciendo ahora: **{current_song['title']}** (solicitado por {current_song['requester'].mention})")
 
-@play.error
-async def play_error(ctx, error):
-    if isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send("Por favor, especifica una canción o URL de YouTube.")
-
 keep_alive()
 try:
     bot.run(os.getenv('TOKEN'))
-except discord.errors.HTTPException:
-    print("\n\nERROR AL CONECTAR")
-    print("Soluciona: https://replit.com/talk/learn/How-to-fix-Discordpy-429-errors-when-using-replit/110322")
+except Exception as e:
+    print(f"Error al iniciar el bot: {e}")
