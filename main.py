@@ -226,6 +226,6 @@ async def now_playing(ctx):
 
 keep_alive()
 try:
-    bot.run(os.getenv('TOKEN'))
+    bot.run(os.getenv('DISCORD_TOKEN'))
 except Exception as e:
     print(f"Error al iniciar el bot: {e}")
