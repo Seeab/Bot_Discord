@@ -1,4 +1,4 @@
 discord.py
 yt-dlp
 Flask
-PyNaCl
+PyNaCl==1.5.0
